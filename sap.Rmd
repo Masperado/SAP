@@ -1,0 +1,23 @@
+---
+title: "SAP"
+author: "Josip Torić"
+date: "May 24, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(data.table)
+```
+
+
+```{r}
+podaci <- tbl_df(fread("sap.csv",header=T))
+
+podaci$GRUPA <- as.factor(podaci$GRUPA)
+podaci$SPOL <- as.factor(podaci$SPOL)
+
+summary(podaci)
+```
+
