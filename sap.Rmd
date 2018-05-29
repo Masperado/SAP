@@ -1,8 +1,9 @@
 ---
 title: "SAP"
-author: "Josip Torić"
+author: "Josip Torić, Matej Pipalović, Patrik Marić"
 date: "May 24, 2018"
-output: html_document
+output:
+  pdf_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -12,6 +13,8 @@ library(data.table)
 ```
 
 
+
+
 ```{r}
 podaci <- tbl_df(fread("sap.csv",header=T))
 
@@ -19,5 +22,108 @@ podaci$GRUPA <- as.factor(podaci$GRUPA)
 podaci$SPOL <- as.factor(podaci$SPOL)
 
 summary(podaci)
+
+hist(podaci$student)
+hist(podaci$cijela_grupa)
+hist(podaci$samo_prijatelji)
+
+hist(podaci$nagrada_student)
+hist(podaci$nagrada_cijela_grupa)
+hist(podaci$nagrada_samo_prijatelji)
+
+head(podaci)
+```
+
+
+
+```{r}
+attach(podaci)
+
+podaci %>% ggplot(aes(student))+
+  geom_histogram()+
+  labs(title="Student")
+
+podaci %>% ggplot(aes(nagrada_student)) + geom_histogram() 
+
+
+# Take the dataset "chol" to be plotted, pass the "AGE" column from the "chol" dataset as values on the x-axis and compute a histogram of this
+ggplot(data=chol, aes(chol$AGE)) + geom_histogram()
+
+gapminder %>% filter(gdpPercap < 50000) %>%
+  ggplot(aes(x=log(gdpPercap), y=lifeExp, col=year, size=pop))+
+  geom_point()+
+  geom_smooth(method = lm)+
+  facet_wrap(~continent)
+
+
+podaci %>% ggplot(aes(student))+
+  geom_histogram(col="red", fill="blue")+
+  labs(title="Student")+
+  geom_density(aes(), col="green")
+
+```
+
+```{r}
+install.packages("gridExtra")
+library(gridExtra)
+```
+
+
+```{r}
+
+my_histo <- function(data, parameter, hist_title, bindwidth) {
+  data %>% ggplot(aes(parameter))+
+  geom_histogram(col="black", fill="blue", binwidth = bindwidth)+
+  labs(title=hist_title)+
+  geom_density(aes(), col="green") 
+}
+
+my_histo_with_density <- function(data, parameter, hist_title, bindwidth) {
+  data %>% ggplot(aes(parameter))+
+  geom_histogram(aes(y=..density..), col="black", fill="blue", binwidth = bindwidth)+
+  labs(title=hist_title)+
+  geom_density(aes(), col="green") 
+}
+
+#student_histo <- my_histo(podaci, podaci$student, "Student", 100)
+#cijela_grupa_histo <- my_histo(podaci, podaci$cijela_grupa, "Cijela grupa", 100)
+
+bindwidth <- 100
+
+student_histo <- my_histo_with_density(podaci, podaci$student, "Student", bindwidth)
+cijela_grupa_histo <- my_histo_with_density(podaci, podaci$cijela_grupa, "Cijela grupa", bindwidth)
+samo_prijatelji_histo <- my_histo_with_density(podaci, podaci$samo_prijatelji, "Samo prijatelji", bindwidth)
+
+student_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_student, "Student s nagradom", bindwidth)
+cijela_grupa_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_cijela_grupa, "Cijela grupa s nagradom", bindwidth)
+samo_prijatelji_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_samo_prijatelji, "Samo prijatelji s nagradom", bindwidth)
+
+grid.arrange(student_histo, student_histo_nagrada, cijela_grupa_histo, cijela_grupa_histo_nagrada, samo_prijatelji_histo, samo_prijatelji_histo_nagrada, ncol=2, nrow = 3)
+
+```
+
+
+Testiramo 
+
+```{r}
+head(podaci)
+```
+
+```{r}
+t.test(podaci$student, podaci$nagrada_student, paired = TRUE, conf.level = 0.95)
+t.test(podaci$student)
+```
+
+```{r}
+podaci %>% filter(podaci$SPOL == "M") -> muski
+podaci %>% filter(podaci$SPOL == "F") -> zenski
+
+# muskraci i zene razmisljaju razlicito
+t.test(muski$student, zenski$student, conf.level = 0.95)
+# utjece li nagrada na muskarce
+t.test(muski$student, muski$nagrada_student, paired = TRUE, conf.level = 0.95)
+# utjece li nagrada na zene
+t.test(zenski$student, zenski$nagrada_student, paired = TRUE, conf.level = 0.95)
+
 ```
 
