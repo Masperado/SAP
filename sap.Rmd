@@ -1,129 +1,529 @@
 ---
-title: "SAP"
+title: "PROJEKT GRUPE KOMETA"
 author: "Josip Torić, Matej Pipalović, Patrik Marić"
 date: "May 24, 2018"
+bibliography: "literatura.bib"
 output:
-  pdf_document: default
+  pdf_document:
+    highlight: tango
+    number_sections: yes
+    toc: yes
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(data.table)
+library(corrplot)
+library(MASS)
+library(nnet)
+library(e1071)
+library(car)
+library(gridExtra)
+library(GGally)
+
 ```
 
 
+\newpage
+
+#UVOD
 
 
+Kažu da su ljudi napredna bića. Kažu da ljudi su različiti od životinja. Kažu da se ljudi vode razumom, a ne nagonima. No, neki vrlo jednostavni eksperimenti kao što je ga je na Stanfordu providio Phillip George Zimbardo govore suprotno. Zimbardo u svojem pokusu opisanom u [@zimbardo] je studente podijelio u svije skupine, zatvorenike i čuvare te ih smjestio u zatvor. Nakon nekog vremena čuvari su postali bahati i okrutni prema zatvorenicima, a zatvorenici su nakon nekog vremena digli bunu i ozbiljno se potukli s čuvarima. Dakle, ljudi su se ponašali kao da se nikad nisu poznavali i bili okrutni jedni prema drugima samo zato što su se našli u takvim pozicijama.
+
+U ovom radu nećemo govoriti o zatvorenicima, već o studentima FER-a, a umjesto Zimbarda u glavnoj ulozi je prof.dr.sc. Mile Šikić. Profesor Šikić nije podijelio studente u zatvorenike i čuvare, već je pred studente postavio jednu knjigu te ih pitao da estimiraju koliko knjiga ima stranica. Također, pitao je učenike da estimiraju koliko će njihove kolege reći koliko knjiga ima stranica, te koliko će njihovi prijatelji reći. Zatim je ponovio eksperiment te rekao da trojica koji budu najbliži će dobiti 3 boda iz bodova s predavanja. Iz podataka koje je prof. Šikić prikupio pokušat ćemo vidjeti da li studenti FER-a bolje razmišljanju kada je nagrada u pitanju. Stvaran broj stranica knjiga je 1171.
+
+Prvo ćemo učitati dataset, zatim ćemo prvo analizirati uz pomoć deskriptivne statistike, izvući ćemo sumarizacije podataka i iscrtati najvažnije grafove. Zatim ćemo uz pomoć inferencijalne analize pokušati izvući zaključke o podacima te na kraju pokušati primijeniti strojno učenje na podatke. Naposljetku donesen je zaključak o svemu što smo napravili.
+
+\newpage
+
+#UČITAVANJE PODATAKA
+
+
+Učitat ćemo dani dataset iz .csv filea. 
 ```{r}
 podaci <- tbl_df(fread("sap.csv",header=T))
 
-podaci$GRUPA <- as.factor(podaci$GRUPA)
+```
+
+
+
+Iz podataka nam nisu bitni podaci o grupi i rednom broju studenta jer iz njih ne možemo ništa zaključiti. Grupe su neravnomjerno raspoređene te je 80 % studenata iz grupe P01, a ostale grupe su zastupljene od 3-5 %. Redni broj studenta je prilično jasan zašto nije bitan za daljnju analizu. Također, pretvorili smo spol u faktorsku varijablu da bi je mogli lakše kasnije analizirati.
+```{r}
+podaci %>% dplyr::select(-GRUPA,-Br.stud) -> podaci
+
 podaci$SPOL <- as.factor(podaci$SPOL)
 
-summary(podaci)
-
-hist(podaci$student)
-hist(podaci$cijela_grupa)
-hist(podaci$samo_prijatelji)
-
-hist(podaci$nagrada_student)
-hist(podaci$nagrada_cijela_grupa)
-hist(podaci$nagrada_samo_prijatelji)
-
-head(podaci)
 ```
 
 
 
+Stvorit ćemo i nekoliko pomoćnih datasetova. Jedan od njih koji će služiti da vidimo kako naga+rada utječe na procjenu je kada predikcije bez obzira na nagradu stavimo u jednu tablicu te dodamo još jedan stupac koji će nam govoriti je li bila nagrada ili nije. Također ćemo razdvojiti dataset po spolu i pripremiti podatke za linearnu regresiju.
 ```{r}
-attach(podaci)
+podaci %>% dplyr::select(student,cijela_grupa,samo_prijatelji,MI,SPOL) -> temp1
+temp1$nagrada <- FALSE
+podaci %>% dplyr::select(student=nagrada_student,
+                         cijela_grupa=nagrada_cijela_grupa,
+                         samo_prijatelji=nagrada_samo_prijatelji,MI,SPOL) -> temp2
+temp2$nagrada <- TRUE
 
-podaci %>% ggplot(aes(student))+
-  geom_histogram()+
-  labs(title="Student")
-
-podaci %>% ggplot(aes(nagrada_student)) + geom_histogram() 
-
-
-# Take the dataset "chol" to be plotted, pass the "AGE" column from the "chol" dataset as values on the x-axis and compute a histogram of this
-ggplot(data=chol, aes(chol$AGE)) + geom_histogram()
-
-gapminder %>% filter(gdpPercap < 50000) %>%
-  ggplot(aes(x=log(gdpPercap), y=lifeExp, col=year, size=pop))+
-  geom_point()+
-  geom_smooth(method = lm)+
-  facet_wrap(~continent)
+podaciNagrada <- rbind(temp1,temp2)
 
 
-podaci %>% ggplot(aes(student))+
-  geom_histogram(col="red", fill="blue")+
-  labs(title="Student")+
-  geom_density(aes(), col="green")
-
-```
-
-```{r}
-install.packages("gridExtra")
-library(gridExtra)
-```
+podaci %>% dplyr::select(-SPOL) -> podaciLinear
 
 
-```{r}
-
-my_histo <- function(data, parameter, hist_title, bindwidth) {
-  data %>% ggplot(aes(parameter))+
-  geom_histogram(col="black", fill="blue", binwidth = bindwidth)+
-  labs(title=hist_title)+
-  geom_density(aes(), col="green") 
-}
-
-my_histo_with_density <- function(data, parameter, hist_title, bindwidth) {
-  data %>% ggplot(aes(parameter))+
-  geom_histogram(aes(y=..density..), col="black", fill="blue", binwidth = bindwidth)+
-  labs(title=hist_title)+
-  geom_density(aes(), col="green") 
-}
-
-#student_histo <- my_histo(podaci, podaci$student, "Student", 100)
-#cijela_grupa_histo <- my_histo(podaci, podaci$cijela_grupa, "Cijela grupa", 100)
-
-bindwidth <- 100
-
-student_histo <- my_histo_with_density(podaci, podaci$student, "Student", bindwidth)
-cijela_grupa_histo <- my_histo_with_density(podaci, podaci$cijela_grupa, "Cijela grupa", bindwidth)
-samo_prijatelji_histo <- my_histo_with_density(podaci, podaci$samo_prijatelji, "Samo prijatelji", bindwidth)
-
-student_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_student, "Student s nagradom", bindwidth)
-cijela_grupa_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_cijela_grupa, "Cijela grupa s nagradom", bindwidth)
-samo_prijatelji_histo_nagrada <- my_histo_with_density(podaci, podaci$nagrada_samo_prijatelji, "Samo prijatelji s nagradom", bindwidth)
-
-grid.arrange(student_histo, student_histo_nagrada, cijela_grupa_histo, cijela_grupa_histo_nagrada, samo_prijatelji_histo, samo_prijatelji_histo_nagrada, ncol=2, nrow = 3)
-
-```
-
-
-Testiramo 
-
-```{r}
-head(podaci)
-```
-
-```{r}
-t.test(podaci$student, podaci$nagrada_student, paired = TRUE, conf.level = 0.95)
-t.test(podaci$student)
-```
-
-```{r}
 podaci %>% filter(podaci$SPOL == "M") -> muski
 podaci %>% filter(podaci$SPOL == "F") -> zenski
 
-# muskraci i zene razmisljaju razlicito
-t.test(muski$student, zenski$student, conf.level = 0.95)
-# utjece li nagrada na muskarce
-t.test(muski$student, muski$nagrada_student, paired = TRUE, conf.level = 0.95)
-# utjece li nagrada na zene
-t.test(zenski$student, zenski$nagrada_student, paired = TRUE, conf.level = 0.95)
+```
+
+\newpage
+
+#DESKRIPTIVNA STATISTIKA
+
+Deskriptivna statistička analiza bavi se mjerama centralne tendencije i mjerama rasipanja. Za razliku od inferencijalne statističke analize, ona ne počiva na teoriji vjerojatnosti. Deskriptivna statistička analiza nam daje jednostavne zaključke o uzorku. Pregled deskriptive analize napravljen je prema [@openintro].
+
+Najvažnije mjere centralne tendencije su aritmetička sredina, medijan i mod.
+
+U simetričkim distribucijama, mod, medijan i srednja vrijednost su jednaki, dok u zakrivljenim distribucijama srednja vrijednost teži u smjeru zakrivljenosti distribucije. U slučaju zakrivljenih distribucija, medijan je najbolji pokazatelj sredine.
+
+Najvažnije mjere rasipanja su rang, interkvartilni rang, varijanca, standardna devijacija, koeficijent varijacije.
+```{r}
+summary(podaci)
+
+```
+Iz osnovnih mjera o podatcima vidimo da predikcije studenata nisu ni blizu stvarnoj brojci stranica knjige koji iznosi 1171. Također, možemo vidjeti da studenti bolje procjenjuju kako će grupa procjenjivati kada je u pitanju nagrada. Isto tako vidimo da na GER-u ima dosta više muškaraca nego žena.
+
+
+```{r}
+muski %>% summary
+zenski %>% summary
+
+```
+Iz razlike između sumarizacija muških i ženskih predikcija, vidimo da žene u načelu kažu da je broj stranica knjige manji od muškaraca te da također postižu lošije rezultate na međuispitu.
+
+
+```{r}
+
+
+podaciLinear %>% cor %>% corrplot
 
 ```
 
+Iz matrica korelacija vidimo da rezultati međuispita ne ovise gotovo o ničemu, dok ostale varijable imaju veliku međusobnu korelaciju.
+
+
+
+```{r, warning=FALSE}
+
+
+ggpairs(podaci)
+
+```
+
+Iz ovih skupa grafova vidimo da podaci ne podilaze savršeno normalnoj razdiobi. Iz boxplotova po spolu vidimo da samo rezultati međuispita ovise donekle o spolu.
+
+
+```{r}
+my_histo_with_density <- function(data, parameter, hist_title, bindwidth, label_x) {
+  graph <- data %>% ggplot(aes(parameter))+
+    geom_histogram(aes(y=..density..), col="black",
+                   fill="#42aaf4", binwidth = bindwidth)+
+    labs(title=hist_title, x=label_x)+
+    geom_density(alpha=.2, fill="#FF6666")
+  
+  return(graph)
+}
+
+bindwidth <- 100
+label_x <- "broj stranica"
+
+podaci %>% filter(!is.na(podaci$student)) -> stud_pod1
+sh <- my_histo_with_density(stud_pod1, stud_pod1$student, 
+                            "Student", bindwidth, label_x)
+
+podaci %>% filter(!is.na(podaci$cijela_grupa)) -> stud_pod2
+cgh <- my_histo_with_density(stud_pod2, stud_pod2$cijela_grupa, 
+                             "Cijela grupa", bindwidth, label_x)
+
+podaci %>% filter(!is.na(podaci$samo_prijatelji)) -> stud_pod3 
+sph <- my_histo_with_density(stud_pod3, stud_pod3$samo_prijatelji, 
+                             "Samo prijatelji", bindwidth, label_x)
+
+podaci %>% filter(!is.na(podaci$nagrada_student)) -> stud_pod4
+nsh <- my_histo_with_density(stud_pod4, stud_pod4$nagrada_student,
+                             "Student s nagradom", bindwidth, label_x)
+
+podaci %>% filter(!is.na(podaci$nagrada_cijela_grupa)) -> stud_pod5 
+ncgh <- my_histo_with_density(stud_pod5, stud_pod5$nagrada_cijela_grupa, 
+                              "Cijela grupa s nagradom", bindwidth, label_x)
+
+podaci %>% filter(!is.na(podaci$nagrada_samo_prijatelji)) -> stud_pod6 
+nsph <- my_histo_with_density(stud_pod6, stud_pod6$nagrada_samo_prijatelji, 
+                              "Samo prijatelji s nagradom", bindwidth, label_x)
+
+grid.arrange(sh, nsh, cgh, ncgh, sph, nsph, ncol=2, nrow = 3)
+```
+
+Iz ovih histograma vidimo ljepši prikaz već prikaz već nacrtanih histograma koje smo nacrtali uz pomoć funkcije ggpairs.
+
+
+
+```{r}
+my_qq_plot <- function(data, parameter, title) {
+  data %>% ggplot(aes(sample=parameter))+
+    stat_qq(col="red", shape=1)+
+    labs(title=title)
+}
+
+student_qq_plot <- my_qq_plot(stud_pod1, 
+                              stud_pod1$student, "Student")
+
+cijela_grupa_qq_plot <- my_qq_plot(stud_pod2,                                    stud_pod2$cijela_grupa, "Cijela grupa")
+
+samo_prijatelji_qq_plot <- my_qq_plot(stud_pod3,                                      stud_pod3$samo_prijatelji, "Samo prijatelji")
+
+student_qq_plot_nagrada <- my_qq_plot(stud_pod4,                                      stud_pod4$nagrada_student, "Student s nagradom")
+
+cijela_grupa_qq_plot_nagrada <- my_qq_plot(stud_pod5,                                           stud_pod5$nagrada_cijela_grupa, "Cijela grupa s nagradom")
+
+samo_prijatelji_qq_plot_nagrad <- my_qq_plot(stud_pod6,                                             stud_pod6$nagrada_samo_prijatelji, "Samo prijatelji s nagradom")
+
+grid.arrange(student_qq_plot, student_qq_plot_nagrada, 
+             cijela_grupa_qq_plot, cijela_grupa_qq_plot_nagrada, 
+             samo_prijatelji_qq_plot, samo_prijatelji_qq_plot_nagrad, ncol=2, nrow=3)
+
+
+```
+
+Iz Q-Q plota možemo najbolje vidjeti da podaci ne podilaze normalnoj razdiobi.
+
+
+\newpage
+
+#INFERENCIJALNA
+
+Inferencijalna analiza odnosi se na provjeravanje postavljenih hipoteza uz pomoć statističkih testova.  Pregled inferencijalne statističke analize napravljen je prema [@openintro].
+
+  Inferencijalna statistička analiza se provodi u nekoliko koraka.
+
+  Prvi korak je postaviti hipoteze. Kod inferencijalne statističke analize imamo dvije hipoteze. Prva hipoteza, ${H_{0}}$ predstavlja nul hipotezu. Nul hipoteza je hipoteza da ne postoji nikakva značajna razlika između populacija. Druga hipoteza, ${H_{1}}$ predstavlja alternativnu hipotezu. Alternativna hipoteza predstavlja alternativu nultoj hipotezi.
+
+  Drugi korak je odabrati testnu statistiku. Testna statistika je statistika na temelju čijih se vrijednosti donosi odluka o odbacivanju ili ne odbacivanju zadane osnove statističke hipoteze u korist njezine alternative. Postoji više vrsta testnih statistika, ovisno što želimo testirati u varijablama.
+
+  Treći korak je odabrati nivo značajnosti $\alpha$ ispod koje ćemo odbaciti nul hipotezu. Najčešće korištene vrijednosti za nivo značajnosti su 1% i 5%.
+
+  Četvrti korak je izračunati vrijednost statistike i usporediti ga s $\alpha$. Ako je vrijednost statistike manja of $\alpha$, zaključujemo da odbacujemo nul hipotezu u korist alternativne hipoteze. 
+
+Inferencijalna statistička analiza se smije provoditi samo za distribucije koje odgovaraju normalnoj distribuciji. Ovo se na prvi pogled čini kao prilično limitirajući faktor, no prema centralnog graničnom teoremu, sve distribucije teže u normalnu distribuciju. Centralni granični teorem kaže ako je $\bar{X}$ aritmetička srednja vrijednost slučajnog uzorka veličine $n$ uzetog iz populacije $s$ s očekivanjem $\mu$ i varijancom $\sigma^2$ onda normirana suma teži po distribuciju u normalnu distribuciju kada $n$ teži u beskonačnost.
+
+Iako naši podaci ne podilaze normalnoj razdiobi, zbog CGT-a možemo raditi testiranja.
+
+Za naše podatke prvo ćemo napraviti t-test, a kasnije ANOVA test.
+
+
+
+## t-test
+```{r}
+t.test(podaci$student, mu = 1171, conf.level = 0.95)
+```
+
+Iz ovog testa vidimo da mudrost mase koja će točno predvidjeti broj stranica nema veze s vezom u ovom našem slučaju.
+
+```{r}
+
+t.test(podaci$student, podaci$cijela_grupa, conf.level=0.95)
+
+t.test(podaci$nagrada_student, podaci$nagrada_cijela_grupa, conf.level=0.95)
+
+
+mean_stud <- mean(podaci$student)
+
+razlike_stud_cijela_grupa <- podaci$cijela_grupa - mean_stud
+t.test(razlike_stud_cijela_grupa, conf.level = 0.99)
+
+mean_stud_nagrada <- mean(podaci$nagrada_student)
+
+razlike_stud_cijela_grupa_nagrad <- podaci$nagrada_cijela_grupa - mean_stud_nagrada
+t.test(razlike_stud_cijela_grupa_nagrad, conf.level = 0.99)
+
+```
+
+Iz ovih t-testova možemo naslutiti da ako je u pitanju nagrada, studenti će bolje procjenjivati koliko će cijela grupa predvidjeti.
+
+```{r}
+t.test(podaci$student, podaci$nagrada_student, paired = TRUE, conf.level = 0.95)
+
+```
+
+Iz ovog testa vidimo da nagrada nema utjecaj na procjenu samog studenta.
+
+
+```{r}
+
+
+t.test(muski$student, zenski$student, conf.level = 0.95)
+
+t.test(muski$cijela_grupa, zenski$cijela_grupa, conf.level = 0.95)
+
+t.test(muski$samo_prijatelji, zenski$samo_prijatelji, conf.level = 0.95)
+
+t.test(muski$student, muski$nagrada_student, paired = TRUE, conf.level = 0.95)
+
+t.test(zenski$student, zenski$nagrada_student, paired = TRUE, conf.level = 0.95)
+
+```
+Iz ovih testova vidimo da nema prevelike razlike u predikcijama između muškaraca i žena.
+
+```{r}
+t.test(muski$MI, zenski$MI, conf.level = 0.95)
+
+```
+Iz ovog testa vidimo da postoji razlika u rezultatu na međuispitu između muškaraca i žena.
+
+\newpage
+
+## ANOVA
+
+```{r}
+aov <- manova(cbind(student,cijela_grupa,samo_prijatelji)~nagrada,data=podaciNagrada)
+summary(aov)
+
+print("------------------------------------------------------------------------------")
+
+aov <- aov(MI~SPOL,data=podaci)
+summary(aov)
+
+print("------------------------------------------------------------------------------")
+
+
+aov <- manova(cbind(student,cijela_grupa,samo_prijatelji,
+                    nagrada_student,nagrada_cijela_grupa,
+                    nagrada_samo_prijatelji)~SPOL,data=podaci)
+summary(aov)
+
+
+```
+Proveli smo 3 ANOVA testa. U prvom testu smo testirali ovisi li nagrada o predikcijama studenta. Vrijednost statistike je bila 0.30, što znači da ne možemo odbaciti nul hipotezu da predikcije ne ovise o nagradi.
+
+U drugom testu smo testirali ovisnost rezultata na međuispitu o spolu. Kao što smo prije vidjeli u deskriptivnoj statistici da muškarci imaju bolje rezultate na međuispitu od žena, ANOVA nam je potvrdila da možemo odbaciti pretpostavku da rezultati na međuispitu na ovise o spolu.
+
+U trećem testu smo vidjeli da predikcije ne ovise o spolu.
+
+\newpage
+
+#STROJNO UČENJE
+
+Pregled strojnog učenja napravljen je prema [@machine].
+
+##Linearna regresija
+
+Iz deskriptivna analize smo vidjeli da MI nema skoro nikakve korelacije s predikacijama, dok sve ostale varijable imaju veliku pozitivnu korelaciju. Iz ovoga možemo pretpostaviti da ćemo dobiti nikakvu pametnu linearnu regresiju za međuispit, dok za ostale varijable linearna regresija će vjerojatno uključivati sve varijable.
+
+Linearnu regresiju ćemo napraviti uz pomoć iterativne selekciju u dva smjera. Prvo ćemo proglasiti da varijabla ovisi o svim varijablama, a onda u drugom slučaju da varijabla ne ovisi o ničemu. U prvom slučaju ćemo odbacivati varijable jednu po jednu pa gledati kad je najbolja R squared mjera, a u drugom slučaju dodavati varijable jednu po jednu. Ovo ćemo provesti za svih 7 varijabli.
+```{r}
+
+##
+
+lm_sve <- lm(MI ~ ., data=podaciLinear)
+
+summary(lm_sve)
+
+lm_prazan <- lm(MI ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+###
+lm_sve <- lm(student ~ ., data=podaciLinear)
+lm_prazan <- lm(student ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+###
+lm_sve <- lm(cijela_grupa ~ ., data=podaciLinear)
+lm_prazan <- lm(cijela_grupa ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+###
+lm_sve <- lm(samo_prijatelji ~ ., data=podaciLinear)
+lm_prazan <- lm(samo_prijatelji ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+###
+
+###
+lm_sve <- lm(nagrada_student ~ ., data=podaciLinear)
+lm_prazan <- lm(nagrada_student ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+###
+lm_sve <- lm(nagrada_cijela_grupa ~ ., data=podaciLinear)
+lm_prazan <- lm(nagrada_cijela_grupa ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+###
+lm_sve <- lm(nagrada_samo_prijatelji ~ ., data=podaciLinear)
+lm_prazan <- lm(nagrada_samo_prijatelji ~ 1, data=podaciLinear)
+
+lm1 <- stepAIC(lm_sve, direction="backward", trace = 0) 
+lm2 <- stepAIC(lm_prazan, scope = list(upper = lm_sve, lower = lm_prazan), 
+                direction="forward", trace = 0)
+summary(lm1)
+#summary(lm2)
+
+
+```
+
+Sve ono što smo pretpostavili prije linearne regresije se pokazalo istinito. Također, regresija unaprijed i unazad nam je dala jednake rezultate pa je nismo ispisivali radi preglednosti ispisa.
+
+
+\newpage
+##Logistička regresija
+
+Logistička regresija je metoda za klasifikaciju podataka u diskretne klase. Logička regresija je takva da predviđa vjerojatno ishoda kada postoje samo dvije mogućnosti (istina ili laž). Ako želimo logičku regresiju iskoristiti za predviđanje $n$ mogućnosti, problem ćemo razložiti u $n$ problema. Svaki problem je zasebna klasifikacija u dvije mogućnosti, odnosno dali podatak spada u tu klasu ili ne spada. Za onu klasu za koju dobijemo najveću vjerojatnost da podatak pripada u nju, proglasit ćemo da podatak pripada toj klasi.
+
+Varijabla koju želimo predvidjeti logističkom regresijom mora biti nominalna, dok varijable o kojima želimo da model zavisi moraju biti numeričke.
+
+S logističkom regresijom ćemo pokušati predvidjeti spol u ovisnosti o rezultatu na međuispitu, spol u ovisnosti o svemu te nagradu o ovisnosti o predikcijama.
+```{r}
+logisticReg <- multinom(SPOL ~ MI, data =podaci,family=binomial)
+summary(logisticReg)
+
+pred <- predict(logisticReg,podaci)
+
+podaci %>% dplyr::select(SPOL) -> results
+results$pred <- pred
+
+error_2 <- results$SPOL==results$pred
+
+summary(error_2)
+
+
+logisticReg <- multinom(SPOL ~ ., data =podaci,family=binomial)
+summary(logisticReg)
+
+pred <- predict(logisticReg,podaci)
+
+podaci %>% dplyr::select(SPOL) -> results
+results$pred <- pred
+
+error_2 <- results$SPOL==results$pred
+
+summary(error_2)
+
+
+podaciNagrada %>% dplyr::select(-SPOL,-MI) -> podaciNagradaBezSpola
+podaciNagradaBezSpola$nagrada <- ifelse(podaciNagradaBezSpola$nagrada,"NAGRADA",
+                                        "NEMA NAGRADE")
+podaciNagradaBezSpola$nagrada <- as.factor(podaciNagradaBezSpola$nagrada)
+
+logisticReg <- multinom(nagrada ~ ., data =podaciNagradaBezSpola,family=binomial)
+summary(logisticReg)
+
+pred <- predict(logisticReg,podaciNagradaBezSpola)
+
+podaciNagradaBezSpola %>% dplyr::select(nagrada) -> results
+results$pred <- pred
+
+error_2 <- results$nagrada==results$pred
+
+summary(error_2)
+```
+
+S predikcijom o spolu nismo ništa pametno dobili. Za predikcije o spolu smo dobili jednak rezultat kao da smo proglasili sve predikcije da su predikcije muškaraca, a za predikciju za nagradu smo dobili malo bolji rezultat nego da smo proglasili da su sve s nagradom. Zanimljivo je i promotriti koeficijente logističke regresije. Možemo vidjeti da ovisnost rezultata međuispita o spolu ima pozitivan koeficijent, te da predikcija nagrada najviše ovisi o predikciji za cijelu grupu s negativnim koeficijentom logističke regresije.
+
+\newpage
+##Stroj potpornih vektora
+
+Stroj potpornih vektora je jedan on najpopularnijih modela strojnih učenja koji se danas koristi pri bilo kojoj klasifikaciji. Stroj potpornih vektora je klasifikator koji konstrukcijom hiperravnine u visoko-dimenzionalnom prostoru stvara model koji predviđa kojoj klasi pripada novi uzorak. Stroj potpornih vektora na ulaz dobiva podatke povezane s klasom kojoj pripadaju te ih prikazuje kao točke u prostoru raspoređene način da su točke koje predstavljaju podatke koji pripadaju različitim klasama međusobno što razmaknutije.
+
+Zadatak stroja potpornog vektora je odabrati optimalnu hiperravninu razdvajanja. Optimalna hiperravnina razdvajanja je ona koja ostavlja najviše slobodnog prostora između klasa, tj. maksimizira marginu između hiperravnine i klasa. Model koristi vektore podataka za određivanje maksimalne margine i ti vektori se nazivaju potporni vektori.
+
+```{r}
+svm <- svm(SPOL ~ MI, data =podaci)
+
+pred <- predict(svm,podaci)
+
+podaci %>% dplyr::select(SPOL) -> results
+results$pred <- pred
+
+error_2 <- results$SPOL==results$pred
+
+summary(error_2)
+
+svm <- svm(SPOL ~ ., data =podaci)
+
+pred <- predict(svm,podaci)
+
+podaci %>% dplyr::select(SPOL) -> results
+results$pred <- pred
+
+error_2 <- results$SPOL==results$pred
+
+summary(error_2)
+
+
+podaciNagrada %>% dplyr::select(-SPOL,-MI) -> podaciNagradaBezSpola
+podaciNagradaBezSpola$nagrada <- ifelse(podaciNagradaBezSpola$nagrada,"NAGRADA",
+                                        "NEMA NAGRADE")
+podaciNagradaBezSpola$nagrada <- as.factor(podaciNagradaBezSpola$nagrada)
+
+svm <- svm(nagrada ~ ., data = podaciNagradaBezSpola)
+
+pred <- predict(svm,podaciNagradaBezSpola)
+
+podaciNagradaBezSpola %>% dplyr::select(nagrada) -> results
+results$pred <- pred
+
+error_2 <- results$nagrada==results$pred
+
+summary(error_2)
+```
+
+Opet iz predikcije o spolu nismo dobili ništa bolje nego da smo proglasili da su svi podaci predikcije muškaraca. Kod predikcije o nagradi uz pomoć SVM-a smo dobili prilično solidan rezultat te smo uz točnost od 60.5% uspjeli predvidjeti jesu li predikcije o broju stranica knjige donesene ako je u pitanju nagrada ili nije.
+
+
+\newpage
+
+
+#ZAKLJUČAK
+
+Analiza ljudskog ponašanja je uvijek vrlo kontroverzna stvar. Još je kontroverzije kad promatramo primalne nagone u ljudi kao što su nagrada, moć, utjecaj i sl. Glavna motivacija ovog rada je bila vidjeti postoje li razlike u procjenama studenata FER-a o broju stranica knjige ako smo su dobili nagradu ili ne.
+
+Iz statističke analize nismo uspjeli dokazati da postoje razlike u procjenama vezano za nagrade. Postoje neke sitne razlike u procjenama, ali ništa da bi sa sigurnošću mogli reći da nagrada utječe na procjenu studenata FER-a
+
+
+U budućnosti, ovaj rad se sigurno može i treba revidirati. Prvo, veći dataset je nužan. 100 studenata je jako mali uzorak da bi se sa sigurnošću nešto moglo dokazati. Također, studente se treba uvjeriti da je istraživanje ozbiljno i da ne unose procjene skroz nasumično.
+
+
+\newpage
+#LITERATURA
